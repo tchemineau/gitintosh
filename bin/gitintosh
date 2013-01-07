@@ -1,0 +1,91 @@
+#!/bin/bash
+#
+
+# --------------------------------------------------------------------------------
+# DOC
+# --------------------------------------------------------------------------------
+#
+# To make the git-shell work, just prefix line into the authorized_keys by the
+# following options:
+#
+#  command="/path/to/gitintosh EMAIL",no-port-forwarding,no-agent-forwarding,no-X11-forwarding,no-pty
+#
+# Then create the file /path/to/gitintosh/conf/user like the following:
+#
+#  EMAIL;GIT_PATH_1,GIT_PATH_2
+#
+# --------------------------------------------------------------------------------
+# CONFIGURATION
+# --------------------------------------------------------------------------------
+
+# Do not modify the following constants
+DIRNAME="$(dirname "$0")"
+SCRIPTNAME="$(basename "$0")"
+FILENAME="${SCRIPTNAME%.*}"
+FILEPATH="$(cd $DIRNAME 2>/dev/null && /bin/pwd)/$SCRIPTNAME"
+ROOTDIR="$(dirname "$(dirname "$FILEPATH")")"
+CONFDIR="$ROOTDIR/conf"
+
+# Configure the path to the user file
+EMAIL_FILE="$CONFDIR"/user
+
+# Get the path to Git Shell
+GIT_SHELL="$(which git-shell)"
+
+# --------------------------------------------------------------------------------
+# PERFORM SOME VERIFICATIONS
+# --------------------------------------------------------------------------------
+
+# Some checks
+if [ $# -ne 1 ]; then
+  echo "Email parameter is mandatory"
+  exit 1
+fi
+
+# --------------------------------------------------------------------------------
+# GET GIVEN PARAMETERS
+# --------------------------------------------------------------------------------
+
+# Get the email address
+EMAIL="$1"
+
+# Get the GIT command
+GITCMD="$(echo "$SSH_ORIGINAL_COMMAND" | cut -d' ' -f1)"
+
+# --------------------------------------------------------------------------------
+# CHECK ACCESS
+# --------------------------------------------------------------------------------
+
+# ----
+# Function to check access
+#
+CHECK_ACCESS ()
+{
+	# Get the GIT target repository
+	target="$(echo $SSH_ORIGINAL_COMMAND | cut -d' ' -f2 | sed -e "s/'//g")"
+
+	# Check access to this repository
+	granted="$(grep -i $EMAIL $EMAIL_FILE | grep $target)"
+
+	# If not granted, exit
+	if [ -z "$granted" ]; then
+		echo "User is not allowed to access to this repository"
+		exit 1
+	fi
+}
+
+# Check access
+case "$GITCMD" in
+	"git-receive-pack")
+		CHECK_ACCESS;;
+	"git-upload-pack")
+		CHECK_ACCESS;;
+esac
+
+# --------------------------------------------------------------------------------
+# RUN GIT SHELL IF ACCESS GRANTED ONLY
+# --------------------------------------------------------------------------------
+
+# Run the git-shell command with the original SSH command
+exec $GIT_SHELL -c "$SSH_ORIGINAL_COMMAND"
+
