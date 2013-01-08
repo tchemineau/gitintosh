@@ -1,19 +1,5 @@
 #!/bin/bash
-#
 
-# --------------------------------------------------------------------------------
-# DOC
-# --------------------------------------------------------------------------------
-#
-# To make the git-shell work, just prefix line into the authorized_keys by the
-# following options:
-#
-#  command="/path/to/gitintosh EMAIL",no-port-forwarding,no-agent-forwarding,no-X11-forwarding,no-pty
-#
-# Then create the file /path/to/gitintosh/conf/user like the following:
-#
-#  EMAIL;GIT_PATH_1,GIT_PATH_2
-#
 # --------------------------------------------------------------------------------
 # CONFIGURATION
 # --------------------------------------------------------------------------------
@@ -26,46 +12,45 @@ FILEPATH="$(cd $DIRNAME 2>/dev/null && /bin/pwd)/$SCRIPTNAME"
 ROOTDIR="$(dirname "$(dirname "$FILEPATH")")"
 CONFDIR="$ROOTDIR/conf"
 
-# Configure the path to the user file
-EMAIL_FILE="$CONFDIR"/user
-
 # Get the path to Git Shell
-GIT_SHELL="$(which git-shell)"
+GIT_SHELL_PATH="$(which git-shell)"
+
+# The user database file
+USER_FILE_PATH="$CONFDIR"/user
 
 # --------------------------------------------------------------------------------
-# PERFORM SOME VERIFICATIONS
+# Internal parameters
 # --------------------------------------------------------------------------------
 
-# Some checks
-if [ $# -ne 1 ]; then
-  echo "Email parameter is mandatory"
-  exit 1
-fi
+# Initialize the GIT repository
+[ -n "$GIT_REPO" ] || GIT_REPO=""
+
+# Initialize the GIT user
+[ -n "$GIT_USER" ] || GIT_USER=""
 
 # --------------------------------------------------------------------------------
-# GET GIVEN PARAMETERS
-# --------------------------------------------------------------------------------
-
-# Get the email address
-EMAIL="$1"
-
-# Get the GIT command
-GITCMD="$(echo "$SSH_ORIGINAL_COMMAND" | cut -d' ' -f1)"
-
-# --------------------------------------------------------------------------------
-# CHECK ACCESS
+# Functions
 # --------------------------------------------------------------------------------
 
 # ----
-# Function to check access
+# Grant access by verifying user database and repository path
 #
 CHECK_ACCESS ()
 {
-	# Get the GIT target repository
-	target="$(echo $SSH_ORIGINAL_COMMAND | cut -d' ' -f2 | sed -e "s/'//g")"
+	# Get the email
+	local user=$1
+
+	# Get the repository
+	local repo=$2
+
+	# Check if user and repo is set
+	if [ -z "$user" || -z "$repo" ]; then
+		echo "No user or repo set"
+		exit 1
+	fi
 
 	# Check access to this repository
-	granted="$(grep -i $EMAIL $EMAIL_FILE | grep $target)"
+	local granted="$(grep -i $user $USER_FILE_PATH | grep $repo)"
 
 	# If not granted, exit
 	if [ -z "$granted" ]; then
@@ -74,18 +59,76 @@ CHECK_ACCESS ()
 	fi
 }
 
-# Check access
-case "$GITCMD" in
-	"git-receive-pack")
-		CHECK_ACCESS;;
-	"git-upload-pack")
-		CHECK_ACCESS;;
+# ----
+# Parse the GIT command
+#
+PARSE_GIT_COMMAND ()
+{
+	# This will store the fact that we should grab repo
+	local isrepo=1
+
+	# Set the GIT command
+	local gitcmd="$(echo "$SSH_ORIGINAL_COMMAND" | cut -d' ' -f1)"
+
+	# Check if we have to grab repo
+	case "$gitcmd" in
+		"git-receive-pack")
+			isrepo=0;;
+		"git-upload-pack")
+			isrepo=0;;
+	esac
+
+	# Grab repo if necessary
+	if [ $isrepo -eq 0 ]; then
+		GIT_REPO="$(echo $SSH_ORIGINAL_COMMAND | cut -d' ' -f2 | sed -e "s/'//g")"
+	fi
+}
+
+# ----
+# Run into git shell mode
+#
+RUN_GIT_SHELL ()
+{
+	# Check access if user and repo is set
+	if [ -n "$GIT_USER" && -n "$GIT_REPO" ]; then
+		CHECK_ACCESS $GIT_USER $GIT_REPO
+	fi
+
+	# If here, CHECK_ACCESS passed: launch the git shell command
+	exec $GIT_SHELL_PATH -c "$SSH_ORIGINAL_COMMAND"
+}
+
+# ----
+# Show help
+#
+SHOW_HELP ()
+{
+	echo
+	echo "Usage: $FILENAME [COMMAND] [GIT_USER=...]"
+	echo
+	echo "Available commands are:"
+	echo
+	echo "  exec    exec a git command within a particular user context"
+	echo
+}
+
+# --------------------------------------------------------------------------------
+# Parse the command line and run appropriate action
+# --------------------------------------------------------------------------------
+
+case $1 in
+
+	# Execute into git-shell mode
+	exec)
+		PARSE_GIT_COMMAND
+		RUN_GIT_SHELL
+		;;
+
+	# Show help
+	*|help)
+		SHOW_HELP
+		;;
+
 esac
 
-# --------------------------------------------------------------------------------
-# RUN GIT SHELL IF ACCESS GRANTED ONLY
-# --------------------------------------------------------------------------------
-
-# Run the git-shell command with the original SSH command
-exec $GIT_SHELL -c "$SSH_ORIGINAL_COMMAND"
 
