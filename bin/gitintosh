@@ -15,6 +15,9 @@ CONFDIR="$ROOTDIR/conf"
 # Get the path to Git Shell
 GIT_SHELL_PATH="$(which git-shell)"
 
+# SSH options
+SSH_OPTIONS="no-port-forwarding,no-agent-forwarding,no-X11-forwarding,no-pty"
+
 # The user database file
 USER_FILE_PATH="$CONFDIR"/user
 
@@ -55,6 +58,57 @@ CHECK_ACCESS ()
 	# If not granted, exit
 	if [ -z "$granted" ]; then
 		echo "User is not allowed to access to this repository"
+		exit 1
+	fi
+}
+
+# ----
+# Check root
+#
+CHECK_ROOT ()
+{
+	if [[ $UID -ne 0 ]]; then
+		echo "Sorry, but this particular command needs to be run as root."
+		exit 1
+	fi
+}
+
+# ----
+# Link client
+# Based on Dazzle link_client code
+# @see https://github.com/hbons/Dazzle/
+#
+LINK_CLIENT ()
+{
+	CHECK_ROOT
+
+	# Ask the user for the link code with a prompt
+	echo "Paste the contents of ${BOLD}\"~/SparkleShare/Your Name's link code.txt\"${NORMAL}"
+	echo "(found on the client) into the field below and press ${BOLD}<ENTER>${NORMAL}."
+	echo
+	echo -n " ${BOLD}Link code: ${NORMAL}"
+	read LINK_CODE
+
+	# Ask the user mail address
+	if [ -z "$GIT_USER" ]; then
+		echo "Enter the email address of the user"
+		echo
+		echo -n " ${BOLD}Email: ${NORMAL}"
+		read GIT_USER
+	fi
+
+	# Link user
+	if [ ${#LINK_CODE} -ge 256 ]; then
+
+		echo 'command="'$FILEPATH' exec GIT_USER='$GIT_USER'",'$SSH_OPTIONS' '$LINK_CODE >> /home/storage/.ssh/authorized_keys
+
+		echo
+		echo "${BOLD}The client with this link code can now access projects.${NORMAL}"
+		echo "Now, edit $USER_FILE_PATH to grant access."
+		echo
+
+	else
+		echo "${BOLD}Not a valid link code...${NORMAL}"
 		exit 1
 	fi
 }
@@ -109,6 +163,7 @@ SHOW_HELP ()
 	echo "Available commands are:"
 	echo
 	echo "  exec    exec a git command within a particular user context"
+	echo "  link    link a client with a particular email address"
 	echo
 }
 
@@ -122,6 +177,11 @@ case $1 in
 	exec)
 		PARSE_GIT_COMMAND
 		RUN_GIT_SHELL
+		;;
+
+	# Link client
+	link)
+		LINK_CLIENT
 		;;
 
 	# Show help
