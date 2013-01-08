@@ -100,7 +100,7 @@ LINK_CLIENT ()
 	# Link user
 	if [ ${#LINK_CODE} -ge 256 ]; then
 
-		echo 'command="'$FILEPATH' exec GIT_USER='$GIT_USER'",'$SSH_OPTIONS' '$LINK_CODE >> /home/storage/.ssh/authorized_keys
+		echo 'command="GIT_USER='$GIT_USER' '$FILEPATH' exec",'$SSH_OPTIONS' '$LINK_CODE >> /home/storage/.ssh/authorized_keys
 
 		echo
 		echo "${BOLD}The client with this link code can now access projects.${NORMAL}"
@@ -144,7 +144,7 @@ PARSE_GIT_COMMAND ()
 RUN_GIT_SHELL ()
 {
 	# Check access if user and repo is set
-	if [ -n "$GIT_USER" && -n "$GIT_REPO" ]; then
+	if [ -n "$GIT_USER" -a -n "$GIT_REPO" ]; then
 		CHECK_ACCESS $GIT_USER $GIT_REPO
 	fi
 
